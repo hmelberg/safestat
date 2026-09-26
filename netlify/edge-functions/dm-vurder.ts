@@ -6,7 +6,7 @@ import {
   type ScriptContext,
 } from "./_lib/parse-script-context.ts";
 import { streamAnthropic } from "./_lib/anthropic.ts";
-import { extractByokKey, gate, upstreamErrorResponse, type IpContext } from "./_lib/auth.ts";
+import { cappedJsonError, extractByokKey, gate, type IpContext, readJsonCapped, upstreamErrorResponse } from "./_lib/auth.ts";
 
 interface RequestBody {
   script: string;
@@ -359,14 +359,11 @@ export default async (request: Request, context: IpContext): Promise<Response> =
   const gateResp = await gate(request, { endpoint: "dm-vurder", maxBodyBytes: MAX_BODY_BYTES, allowByok: true }, context);
   if (gateResp) return gateResp;
 
-  let body: RequestBody;
-  try {
-    body = await request.json();
-    if (typeof body.script === "string" && body.script.length > MAX_BODY_BYTES) {
-      return new Response("Script too large", { status: 413 });
-    }
-  } catch (_) {
-    return new Response("Invalid JSON", { status: 400 });
+  const parsed = await readJsonCapped(request, MAX_BODY_BYTES);
+  if (!parsed.ok) return cappedJsonError(parsed.tooLarge);
+  const body = (parsed.value ?? {}) as RequestBody;
+  if (typeof body.script === "string" && body.script.length > MAX_BODY_BYTES) {
+    return new Response("Script too large", { status: 413 });
   }
   if (!body.script || typeof body.script !== "string") {
     return new Response("Missing script", { status: 400 });

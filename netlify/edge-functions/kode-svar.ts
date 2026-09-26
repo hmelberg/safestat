@@ -1,5 +1,5 @@
 import { streamAnthropic } from "./_lib/anthropic.ts";
-import { extractByokKey, gate, upstreamErrorResponse, type IpContext } from "./_lib/auth.ts";
+import { cappedJsonError, extractByokKey, gate, type IpContext, readJsonCapped, upstreamErrorResponse } from "./_lib/auth.ts";
 import { abbrevType, cleanDescription, extractValidPeriod, renderLabels } from "./_lib/catalog-format.ts";
 
 // ====================================================================
@@ -1250,12 +1250,9 @@ export default async (request: Request, context: IpContext): Promise<Response> =
   const gateResp = await gate(request, { endpoint: "kode-svar", maxBodyBytes: 50_000, allowByok: true }, context);
   if (gateResp) return gateResp;
 
-  let body: RequestBody;
-  try {
-    body = await request.json();
-  } catch (_) {
-    return new Response("Invalid JSON", { status: 400 });
-  }
+  const parsed = await readJsonCapped(request, 50_000);
+  if (!parsed.ok) return cappedJsonError(parsed.tooLarge);
+  const body = (parsed.value ?? {}) as RequestBody;
   const question = (body.question ?? "").trim();
   if (!question) {
     return new Response("Missing question", { status: 400 });

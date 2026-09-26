@@ -1,6 +1,7 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   clientIp,
+  readJsonCapped,
   extractByokKey,
   type GateDeps,
   runGate,
@@ -311,4 +312,30 @@ Deno.test("runGate: allowByok, valid BYOK header AND invalid Bearer token both p
   const resp = await runGate(request, { endpoint: "t", maxBodyBytes: 100, allowByok: true }, deps);
   assertEquals(resp, null);
   assertEquals(deps.calls.validate, 0); // BYOK short-circuits before token validation
+});
+
+Deno.test("readJsonCapped: parser kropp under taket", async () => {
+  const r = await readJsonCapped(new Request("http://x/", { method: "POST", body: '{"a":1}' }), 100);
+  assertEquals(r, { ok: true, value: { a: 1 } });
+});
+
+Deno.test("readJsonCapped: avbryter chunked kropp over taket (ingen content-length)", async () => {
+  let pulls = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(c) {
+      pulls++;
+      if (pulls > 1000) { c.close(); return; }
+      c.enqueue(new Uint8Array(64));
+    },
+  });
+  const request = new Request("http://x/", { method: "POST", body: stream });
+  assertEquals(request.headers.get("content-length"), null);
+  const r = await readJsonCapped(request, 256);
+  assertEquals(r, { ok: false, tooLarge: true });
+  assertEquals(pulls < 20, true);
+});
+
+Deno.test("readJsonCapped: ugyldig JSON er ikke tooLarge", async () => {
+  const r = await readJsonCapped(new Request("http://x/", { method: "POST", body: "{nope" }), 100);
+  assertEquals(r, { ok: false, tooLarge: false });
 });

@@ -1,6 +1,6 @@
 // /api/data-svar — Web mode: agentic discovery + generation (admin-only).
 // Spec: docs/superpowers/specs/2026-07-03-web-data-svar-design.md
-import { adminGate, extractByokKey, type IpContext } from "./_lib/auth.ts";
+import { adminGate, cappedJsonError, extractByokKey, type IpContext, readJsonCapped } from "./_lib/auth.ts";
 import { type AgenticResumeState, runAgenticStream } from "./_lib/anthropic.ts";
 import { loadRegistry, renderRegistryBlock } from "./_lib/registry.ts";
 import { searchCatalog } from "./_lib/tools/search-catalog.ts";
@@ -39,8 +39,9 @@ export default async (request: Request, context: IpContext): Promise<Response> =
   const gateResp = await adminGate(request, { endpoint: "data-svar", maxBodyBytes: MAX_BODY_BYTES, allowByok: true }, context);
   if (gateResp) return gateResp;
 
-  let body: RequestBody;
-  try { body = await request.json(); } catch { return new Response("Invalid JSON", { status: 400 }); }
+  const parsed = await readJsonCapped(request, MAX_BODY_BYTES);
+  if (!parsed.ok) return cappedJsonError(parsed.tooLarge);
+  const body = (parsed.value ?? {}) as RequestBody;
   const question = (body.question ?? "").trim();
   if (!question) return new Response("Missing question", { status: 400 });
   const repair = body.repair;
