@@ -42,6 +42,9 @@ A companion repo, `microdata-api` (Anvil), hosts the auth/AI backend and a
 ## Common commands
 
 ```bash
+# Set up the Python environment (once)
+python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
+
 # Python tests (engine, regressions, equivalence, mock-data)
 .venv/bin/python -m pytest tests/
 
